@@ -3,7 +3,8 @@ Option Explicit
 Sub GetExchangeRates()
 '    Dim DataSheet As Worksheet
     Dim DataBook As Workbook
-    Dim sDate, eDate, str, rateSheet As String
+    Dim rateSheet As String
+    Dim http As Object, apiResponse As String, allRates() As String, oneRate() As String, i As Integer, rowNum As Integer
     
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
@@ -20,81 +21,31 @@ Sub GetExchangeRates()
     Sheets.Add.Name = rateSheet
     Sheets(rateSheet).Move after:=Worksheets(Worksheets.Count)
 
-
-    ' Rolling average daily rate for past 5 weeks: start date = 5 weeks before yesterday; end date = yesterday
-    sDate = Format(Now - (5 * 7) - 1, "yyyy-mm-dd")
-    eDate = Format(Now - 1, "yyyy-mm-dd")
-
-    ' http://www.oanda.com/currency/historical-rates/download?quote_currency=USD&end_date=2016-05-19&start_date=2016-04-14&period=daily&display=absolute&rate=0&data_range=c&price=mid&view=table&base_currency_0=CAD&base_currency_1=EUR&base_currency_2=AUD&base_currency_3=KRW&base_currency_4=JPY&base_currency_5=SGD&download=csv
-    str = "http://www.oanda.com/currency/historical-rates/download?quote_currency=USD&end_date=" _
-        & eDate & "&start_date=" & sDate _
-        & "&period=daily&display=absolute&rate=0&data_range=c&price=mid&view=table&base_currency_0=CAD&base_currency_1=EUR&base_currency_2=AUD&base_currency_3=KRW&base_currency_4=JPY&base_currency_5=SGD&base_currency_6=CNY&download=csv"
-
-QueryQuote:
-    With Sheets(rateSheet).QueryTables.Add(Connection:="URL;" & str, Destination:=Sheets(rateSheet).Range("A1"))
-        .BackgroundQuery = True
-        .TablesOnlyFromHTML = False
-        .Refresh BackgroundQuery:=False
-        .SaveData = True
-    End With
-
-    Sheets(rateSheet).Range("A5:A22").CurrentRegion.TextToColumns Destination:=Sheets(rateSheet).Range("A5:A22"), DataType:=xlDelimited, _
-                                                           TextQualifier:=xlDoubleQuote, ConsecutiveDelimiter:=False, Tab:=False, _
-                                                           Semicolon:=False, Comma:=True, Space:=False, other:=True, OtherChar:=",", FieldInfo:=Array(1, 2)
-
-    With Sheets(rateSheet)
-    ' Inverse the average daily rate and apply names
-        With .Range("B4")
-            .Value = 1 / Application.Average(Sheets(rateSheet).Range("B6:B41"))
-            .Name = "cadToUsd"
-        End With
-        With .Range("C4")
-            .Value = 1 / Application.Average(Sheets(rateSheet).Range("C6:C41"))
-            .Name = "eurToUsd"
-        End With
-        With .Range("D4")
-            .Value = 1 / Application.Average(Sheets(rateSheet).Range("D6:D41"))
-            .Name = "audToUsd"
-        End With
-        With .Range("E4")
-            .Value = 1 / Application.Average(Sheets(rateSheet).Range("E6:E41"))
-            .Name = "krwToUsd"
-        End With
-        With .Range("F4")
-            .Value = 1 / Application.Average(Sheets(rateSheet).Range("F6:F41"))
-            .Name = "jpyToUsd"
-        End With
-        With .Range("G4")
-            .Value = 1 / Application.Average(Sheets(rateSheet).Range("G6:G41"))
-            .Name = "sgdToUsd"
-        End With
-        With .Range("H4")
-            .Value = 1 / Application.Average(Sheets(rateSheet).Range("H6:H41"))
-            .Name = "cnyToUsd"
-        End With
-
-        ' Label rates on sheet
-        .Range("B3").Value = "CAD/USD"
-        .Range("C3").Value = "EUR/USD"
-        .Range("D3").Value = "AUD/USD"
-        .Range("E3").Value = "KRW/USD"
-        .Range("F3").Value = "JPY/USD"
-        .Range("G3").Value = "SGD/USD"
-        .Range("H3").Value = "CNY/USD"
-    End With
-
+    Set http = CreateObject("MSXML2.XMLHTTP") 'Tools > References: Add Microsoft XML
+    http.Open "GET", "http://api.fixer.io/latest?base=USD&symbols=AUD,CAD,CNY,EUR,JPY,KRW,SGD", False 'http://fixer.io/
+    http.Send
+    
+    apiResponse = Replace(Replace(Replace(Replace(http.responseText, Chr(34), ""), "{", ""), "}", ""), "rates:", "")
+    allRates = Split(apiResponse, ",")
+    
+    Sheets(rAtesheet).Cells.Clear
+    Sheets(rAtesheet).Range("A1").Value = "Current daily exchange rates from the European Central Bank via fixer.io"
+    Sheets(rAtesheet).Range("C3").Value = "Local to USD"
+    
+    For i = LBound(allRates) To UBound(allRates)
+        rowNum = i + 3
+        oneRate = Split(allRates(i), ":")
+        Sheets(rAtesheet).Range("A" & rowNum).Value = oneRate(0)
+        Sheets(rAtesheet).Range("B" & rowNum).Value = oneRate(1)
+        If rowNum > 4 Then
+            With Sheets(rAtesheet).Range("C" & rowNum)
+                .Value = 1 / oneRate(1)
+                .Name = LCase(Sheets(rAtesheet).Range("A" & rowNum).Value) & "ToUsd"
+            End With
+        End If
+    Next
 
     Application.DisplayAlerts = True
-    
-    Call KillConnections
 
 End Sub
 
-Sub KillConnections()
-    Dim i As Integer
-    For i = 1 To ActiveWorkbook.Connections.Count
-    If ActiveWorkbook.Connections.Count = 0 Then Exit Sub
-    ActiveWorkbook.Connections.Item(i).Delete
-    i = i - 1
-    Next i
-End Sub
